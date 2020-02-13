@@ -110,7 +110,7 @@ impl crate::ferro::Output for Output {
 
 pub struct CloudFormation {
     pub stack_name: Box<crate::lazy::String>,
-    pub template: Template,
+    pub template: Box<dyn Fn(&crate::ferro::Context) -> Template>,
     cfn: CloudFormationClient,
 }
 
@@ -189,7 +189,11 @@ impl CloudFormation {
         }
     }
 
-    fn create_stack(&self, stack_name: &String) -> Result<Option<Output>, Error> {
+    fn create_stack(
+        &self,
+        stack_name: &String,
+        template: &Template,
+    ) -> Result<Option<Output>, Error> {
         let mut create_stack_input = CreateStackInput {
             stack_name: stack_name.to_owned(),
             capabilities: Some(vec![
@@ -199,7 +203,7 @@ impl CloudFormation {
             ]),
             ..Default::default()
         };
-        match &self.template {
+        match template {
             Template::TemplateBody(body) => {
                 create_stack_input.template_body = Some(body.to_owned())
             }
@@ -220,7 +224,11 @@ impl CloudFormation {
             .map_err(|e| Error::CloudFormationError(e.to_string()))
     }
 
-    fn update_stack(&self, stack_name: &String) -> Result<Option<Output>, Error> {
+    fn update_stack(
+        &self,
+        stack_name: &String,
+        template: &Template,
+    ) -> Result<Option<Output>, Error> {
         let mut update_stack_input = UpdateStackInput {
             stack_name: stack_name.to_owned(),
             capabilities: Some(vec![
@@ -230,7 +238,7 @@ impl CloudFormation {
             ]),
             ..Default::default()
         };
-        match &self.template {
+        match template {
             Template::TemplateBody(body) => {
                 update_stack_input.template_body = Some(body.to_owned())
             }
@@ -262,8 +270,9 @@ impl crate::ferro::Module for CloudFormation {
         context: &crate::ferro::Context,
     ) -> Result<crate::ferro::Response, crate::ferro::Error> {
         let stack_name = (self.stack_name)(context);
+        let template = (self.template)(context);
         match self.get_stack_info(&stack_name) {
-            Ok(_) => match self.update_stack(&stack_name) {
+            Ok(_) => match self.update_stack(&stack_name, &template) {
                 Ok(opt) => opt.map_or_else(
                     || crate::ferro::result_response(true, None),
                     |output| crate::ferro::result_response(true, Some(Box::new(output))),
@@ -287,7 +296,7 @@ impl crate::ferro::Module for CloudFormation {
                 Err(e) => crate::ferro::result_error(true, e.to_string()),
             },
 
-            Err(Error::StackNotFoundError) => match self.create_stack(&stack_name) {
+            Err(Error::StackNotFoundError) => match self.create_stack(&stack_name, &template) {
                 Ok(Some(output)) => crate::ferro::result_response(true, Some(Box::new(output))),
                 Ok(None) => crate::ferro::result_response(true, None),
                 Err(e) => crate::ferro::result_error(true, e.to_string()),
