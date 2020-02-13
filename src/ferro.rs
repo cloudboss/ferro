@@ -1,6 +1,7 @@
 use serde::Serialize;
 use serde_json::value::Value;
 use std::collections::HashMap;
+use std::default::Default;
 use std::error;
 use std::fmt;
 
@@ -56,6 +57,12 @@ pub struct NullError;
 
 #[derive(fmt::Debug)]
 pub struct NullModule;
+
+impl Default for NullModule {
+    fn default() -> Self {
+        NullModule
+    }
+}
 
 impl Module for NullModule {
     fn name(&self) -> String {
@@ -272,17 +279,6 @@ mod tests {
         let _ = fs::read_to_string("cf.yml")
             .map_err(|_| crate::modules::aws::cloudformation::Error::UnknownError)
             .and_then(|body| {
-                crate::modules::aws::cloudformation::CloudFormation::new(
-                    Box::new(crate::lazy::with_default(
-                        crate::lazy::var("stack_ame".to_owned()),
-                        lazy_format!("foo-{}", crate::lazy::var("stack_name".to_owned())),
-                    )),
-                    Box::new(move || {
-                        crate::modules::aws::cloudformation::Template::TemplateBody(body.clone())
-                    }),
-                )
-            })
-            .and_then(|cf| {
                 let tasks = vec![
                     crate::ferro::Task {
                         description: "do nothing".to_owned(),
@@ -310,7 +306,18 @@ mod tests {
                     },
                     crate::ferro::Task {
                         description: "run cloudformation".to_owned(),
-                        module: Box::new(cf),
+                        module: Box::new(crate::modules::aws::cloudformation::CloudFormation {
+                            stack_name: Box::new(crate::lazy::with_default(
+                                crate::lazy::var("stack_ame".to_owned()),
+                                lazy_format!("foo-{}", crate::lazy::var("stack_name".to_owned())),
+                            )),
+                            template: Box::new(move |_| {
+                                crate::modules::aws::cloudformation::Template::TemplateBody(
+                                    body.clone(),
+                                )
+                            }),
+                            ..Default::default()
+                        }),
                         when: Box::new(crate::when::Always),
                     },
                     crate::ferro::Task {

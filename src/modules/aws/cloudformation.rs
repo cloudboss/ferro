@@ -13,14 +13,9 @@ use rusoto_cloudformation::{
     UpdateStackInput,
 };
 use rusoto_core::RusotoError;
-use rusoto_credential::ProfileProvider;
-use rusoto_signature::region::Region;
 use serde::{Deserialize, Serialize};
 
 const CLOUDFORMATION: &str = "cloudformation";
-
-const AWS_DEFAULT_REGION: &str = "AWS_DEFAULT_REGION";
-const AWS_REGION: &str = "AWS_REGION";
 
 const CAPABILITY_IAM: &str = "CAPABILITY_IAM";
 const CAPABILITY_NAMED_IAM: &str = "CAPABILITY_NAMED_IAM";
@@ -111,24 +106,10 @@ impl crate::ferro::Output for Output {
 pub struct CloudFormation {
     pub stack_name: Box<crate::lazy::String>,
     pub template: Box<dyn Fn(&crate::ferro::Context) -> Template>,
-    cfn: CloudFormationClient,
+    pub cfn: CloudFormationClient,
 }
 
 impl CloudFormation {
-    pub fn new(
-        stack_name: Box<crate::lazy::String>,
-        template: Box<dyn Fn() -> Template>,
-    ) -> Result<Self, Error> {
-        get_region().and_then(|region| {
-            let cfn = CloudFormationClient::new(region);
-            Ok(CloudFormation {
-                stack_name: stack_name,
-                template: template(),
-                cfn: cfn,
-            })
-        })
-    }
-
     fn get_stack_info(&self, stack_name: &String) -> Result<Stack, Error> {
         let describe_stacks = self.cfn.describe_stacks(DescribeStacksInput {
             next_token: None,
@@ -260,6 +241,16 @@ impl CloudFormation {
     }
 }
 
+impl Default for CloudFormation {
+    fn default() -> Self {
+        CloudFormation {
+            stack_name: Box::new(crate::lazy::string("".to_owned())),
+            template: Box::new(|_| Template::TemplateBody("".to_owned())),
+            cfn: CloudFormationClient::new(Default::default()),
+        }
+    }
+}
+
 impl crate::ferro::Module for CloudFormation {
     fn name(&self) -> String {
         CLOUDFORMATION.to_owned()
@@ -311,16 +302,6 @@ impl crate::ferro::Module for CloudFormation {
             changed: false,
             output: None,
         })
-    }
-}
-
-fn get_region() -> Result<Region, Error> {
-    match std::env::var(AWS_DEFAULT_REGION).or_else(|_| std::env::var(AWS_REGION)) {
-        Ok(ref v) => Region::from_str(v).map_err(|_| Error::RegionNotFoundError),
-        Err(_) => match ProfileProvider::region() {
-            Ok(Some(region)) => Region::from_str(&region).map_err(|_| Error::RegionNotFoundError),
-            _ => Err(Error::RegionNotFoundError),
-        },
     }
 }
 
