@@ -150,10 +150,9 @@ impl Playbook {
                     self.context.state.insert(task.description.clone(), value);
                 }
             }
-            let _ = serde_json::to_string_pretty(&result).and_then(|json_out| {
-                println!("{}", json_out);
-                Ok(())
-            });
+
+            println!("{}", serde_json::to_string_pretty(&result).unwrap());
+
             let succeeded = result.succeeded;
             results.push(result);
             if succeeded {
